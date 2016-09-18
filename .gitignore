@@ -1,0 +1,8 @@
+target
+ml-100k
+metastore_db
+.DS_Store
+thumbs.db
+derby.log
+*.swp
+.idea
