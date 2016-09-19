@@ -5,6 +5,9 @@ import org.apache.spark.mllib.evaluation.RankingMetrics
 import org.apache.spark.mllib.recommendation.{MatrixFactorizationModel, Rating}
 import org.apache.spark.sql.SparkSession
 
+/**
+  * Created by jongwook on 9/18/16.
+  */
 object MovieLensEvaluateSpark extends App {{
 
   val conf = new SparkConf()

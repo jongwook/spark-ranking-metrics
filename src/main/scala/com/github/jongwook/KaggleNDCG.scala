@@ -1,12 +1,22 @@
 package com.github.jongwook
 
-import org.slf4j.LoggerFactory
+import net.recommenders.rival.core.DataModel
+import net.recommenders.rival.evaluation.metric.ranking.NDCG
+import net.recommenders.rival.evaluation.metric.ranking.NDCG.TYPE
+import org.apache.spark.SparkConf
+import org.apache.spark.mllib.evaluation.RankingMetrics
+import org.apache.spark.mllib.recommendation.Rating
+import org.apache.spark.sql.SparkSession
 
+import scala.util.{Failure, Success, Random, Try}
+
+/** A rough translation of Kaggle's code for NDCG, found at https://www.kaggle.com/wiki/NormalizedDiscountedCumulativeGain
+  * Note that these methods only calculate the ranking for one query (usually corresponding to a user),
+  * while reported evaluation metrics are usually average performance over multiple queries.
+  */
 object KaggleNDCG {
 
-  lazy val log = LoggerFactory.getLogger(getClass.getName.stripSuffix("$"))
-
-  def EvaluateSubmissionSubset(solution: Map[Int, Double], submission: Seq[Int], k: Int): Double = {
+  def evaluateSubmissionSubset(solution: Map[Int, Double], submission: Seq[Int], k: Int): Double = {
     val dcg = calculateDcg(k, submission, solution)
     val optimal = calculateOptimalDcg(k, solution)
     var ndcg = dcg / optimal
@@ -16,20 +26,15 @@ object KaggleNDCG {
     ndcg
   }
 
-  def calculateDcg(k: Int, documents: Seq[Int], documentToRelevances: Map[Int, Double]): Double = {
-    val relevances = documents.map { currentDocumentId =>
-      documentToRelevances.get(currentDocumentId) match {
-        case Some(relevance) => relevance
-        case None =>
-          log.warn(s"Item '$currentDocumentId' was specified but is unrecognized. Assuming not relevant (i.e. score of 0)")
-          0
-      }
+  def calculateDcg(k: Int, items: Seq[Int], itemToRelevances: Map[Int, Double]): Double = {
+    val relevances = items.map { item =>
+      itemToRelevances.getOrElse(item, 0.0)
     }
     calculateDcg(k, relevances)
   }
 
-  private def calculateOptimalDcg(k: Int, documentToRelevances: Map[Int, Double]): Double = {
-    calculateDcg(k, documentToRelevances.values.toSeq.sortBy(x => -x))
+  private def calculateOptimalDcg(k: Int, itemToRelevances: Map[Int, Double]): Double = {
+    calculateDcg(k, itemToRelevances.values.toSeq.sortBy(x => -x))
   }
 
   val log2: Double = Math.log(2)
@@ -40,11 +45,75 @@ object KaggleNDCG {
     }.sum
   }
 
-}
+  /** A test to show that Kaggle's, Rival's, and Spark's NDCG implementations are equivalent */
+  def main(args: Array[String]): Unit = {
+    // simple synthetic data for ranking query
+    val numItems = 10
+    val rng = new Random(0)
+    val groundTruth = (1 to numItems).map(x => (x, x.toDouble)).toMap
+    val prediction = (numItems/2 to numItems).map(x => (x, rng.nextDouble())).toMap
 
-object KaggleNDCGTest extends App {
-  for (k <- 1 to 5) {
-    val ndcg = KaggleNDCG.EvaluateSubmissionSubset(Map(1 -> 1.0, 2 -> 2.0, 3 -> 3.0, 4 -> 4.0, 5 -> 5.0), Seq(4, 5, 3, 2, 1), k)
-    println(ndcg)
+    val groundTruthRanking = groundTruth.toSeq.sortBy(-_._2).map(_._1).toArray
+    val predictionRanking = prediction.toSeq.sortBy(-_._2).map(_._1).toArray
+
+    val ats = (1 to numItems).toArray
+
+    // Kaggle
+    printf("%10s", "Kaggle")
+    for (k <- ats) {
+      printf("%15.12f", evaluateSubmissionSubset(groundTruth, predictionRanking, k))
+    }
+    println()
+
+    // Rival
+    val groundTruthModel = new DataModel[Int, Int]()
+    val predictionModel = new DataModel[Int, Int]()
+
+    groundTruth.foreach { case (item, rating) => groundTruthModel.addPreference(0, item, rating); }
+    prediction.foreach { case (item, rating) => predictionModel.addPreference(0, item, rating); }
+    val rivalNDCG = new NDCG[Int, Int](predictionModel, groundTruthModel, 0, ats, TYPE.EXP)
+    rivalNDCG.compute()
+
+    printf("%10s", "Rival")
+    for (k <- ats) {
+      printf("%15.12f", rivalNDCG.getValueAt(k))
+    }
+    println()
+
+    // Spark
+    Try(Class.forName("org.apache.spark.sql.SparkSession")) match {
+      case Success(_) =>
+        val spark = SparkSession.builder().master(new SparkConf().get("spark.master", "local[8]")).getOrCreate()
+        import spark.implicits._
+
+        val predictionAndLabel = spark.sparkContext.parallelize(Seq((predictionRanking, groundTruthRanking)))
+        val metrics = new RankingMetrics(predictionAndLabel)
+
+        val sparkNDCGs = ats.map(metrics.ndcgAt)
+        printf("%10s", "Spark")
+        sparkNDCGs.foreach(ndcg => printf("%15.12f", ndcg))
+        println()
+
+        val predictionSet = spark.createDataset(prediction.toSeq.map {
+          case (item, rating) => Rating(0, item, rating)
+        })
+        val groundTruthSet = spark.createDataset(groundTruth.toSeq.map {
+          case (item, rating) => Rating(0, item, rating)
+        })
+
+        val dataFrameMetrics = DataFrameRankingMetrics(predictionSet, groundTruthSet, 0)
+        dataFrameMetrics.setItemCol("product")
+        dataFrameMetrics.setPredictionCol("rating")
+
+        val customNDCGs = ats.map(dataFrameMetrics.ndcgAt)
+        printf("%10s", "Custom")
+        customNDCGs.foreach(ndcg => printf("%15.12f", ndcg))
+        println()
+
+
+      case Failure(_) =>
+        println("Spark classes not found")
+    }
   }
+
 }

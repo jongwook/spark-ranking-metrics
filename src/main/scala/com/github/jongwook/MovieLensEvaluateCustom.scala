@@ -32,10 +32,10 @@ object MovieLensEvaluateCustom extends App {{
 
   val result = testModel.recommendProductsForUsers(ats.max)
 
-  val prediction = spark.createDataset(result.flatMapValues(ratings => ratings))
+  val prediction = spark.createDataset(result.values.flatMap(ratings => ratings))
   val groundTruth = spark.createDataset(testRatings)
 
-  val metrics = DataFrameRankingMetrics(prediction, groundTruth, 0.01)
+  val metrics = DataFrameRankingMetrics(prediction, groundTruth)
   metrics.setItemCol("product")
   metrics.setPredictionCol("rating")
 
@@ -53,7 +53,22 @@ object MovieLensEvaluateCustom extends App {{
   }
   println()
 
+  printf("%12s", "Recall")
+  for (k <- ats) {
+    printf("%12.8f", metrics.recallAt(k))
+  }
+  println()
+
+  printf("%12s", "F1")
+  for (k <- ats) {
+    printf("%12.8f", metrics.f1At(k))
+  }
+  println()
+
   printf("%12s", "MAP")
-  printf("%12.8f\n", metrics.meanAveragePrecision)
+  for (k <- ats) {
+    printf("%12.8f", metrics.mapAt(k))
+  }
+  println()
 
 }}

@@ -27,10 +27,7 @@ class F1[U, I](precision: Precision[U, I], recall: Recall[U, I], predictions: Da
   }
 }
 
-/**
-  * Created by jongwook on 9/18/16.
-  */
-object MovieLensEvaluate extends App {{
+object MovieLensEvaluateRival extends App {{
 
   val spark = SparkSession.builder().enableHiveSupport().getOrCreate()
 
@@ -69,11 +66,11 @@ object MovieLensEvaluate extends App {{
     }
   }
 
-  val ndcg = new NDCG(predictions, groundtruth, 0.01, ats, TYPE.EXP)
-  val map = new MAP(predictions, groundtruth, 0.01, ats)
-  val precision = new Precision(predictions, groundtruth, 0.01, ats)
-  val recall = new Recall(predictions, groundtruth, 0.01, ats)
-  val f1 = new F1(precision, recall, predictions, groundtruth, 0.01, ats)
+  val ndcg = new NDCG(predictions, groundtruth, 0, ats, TYPE.EXP)
+  val map = new MAP(predictions, groundtruth, 0, ats)
+  val precision = new Precision(predictions, groundtruth, 0, ats)
+  val recall = new Recall(predictions, groundtruth, 0, ats)
+  val f1 = new F1(precision, recall, predictions, groundtruth, 0, ats)
 
   val metrics = Seq(ndcg, map, precision, recall, f1)
 

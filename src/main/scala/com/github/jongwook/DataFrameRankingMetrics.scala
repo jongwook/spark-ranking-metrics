@@ -33,7 +33,7 @@ class DataFrameRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, rele
   lazy val log = LoggerFactory.getLogger(getClass)
   lazy val sqlContext = groundTruth.sqlContext
 
-  def predictionAndLabels: RDD[(Array[(Int, Double)], Array[(Int, Double)])] = {
+  def predictionAndLabels: RDD[(Array[Int], Array[(Int, Double)])] = {
     import sqlContext.implicits._
     import org.apache.spark.sql.functions._
 
@@ -48,13 +48,12 @@ class DataFrameRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, rele
     val left = p.select(user, item, prediction).map {
       case Row(user: Int, item: Int, prediction: Double) => (user, (item, prediction))
     }
-    val right = g.select(user, item, rating).flatMap {
-      case Row(user: Int, item: Int, rating: Double) if rating >= relevanceThreshold => Some((user, (item, rating)))
-      case _ => None
+    val right = g.select(user, item, rating).where(rating >= relevanceThreshold).map {
+      case Row(user: Int, item: Int, rating: Double) => (user, (item, rating))
     }
     (left.rdd cogroup right.rdd).values.map {
       case (predictedItems, groundTruthItems) =>
-        val prediction = predictedItems.toArray.sortBy(-_._2)
+        val prediction = predictedItems.toArray.sortBy(-_._2).map(_._1)
         val labels = groundTruthItems.toArray.sortBy(-_._2)
         (prediction, labels)
     }.cache()
@@ -62,46 +61,75 @@ class DataFrameRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, rele
 
   def precisionAt(k: Int): Double = {
     require(k > 0, "ranking position k should be positive")
-    predictionAndLabels.map { case (pred, lab) =>
-      val labSet = lab.map(_._1).toSet
+    predictionAndLabels.map { case (pred, label) =>
+      val labelMap = label.toMap
 
-      if (labSet.nonEmpty) {
+      if (labelMap.nonEmpty) {
         val n = math.min(pred.length, k)
         var i = 0
         var cnt = 0
         while (i < n) {
-          if (labSet.contains(pred(i)._1)) {
+          if (labelMap.contains(pred(i))) {
             cnt += 1
           }
           i += 1
         }
         cnt.toDouble / k
       } else {
-        log.warn("Empty ground truth set, check input data")
         0.0
       }
     }.mean()
   }
 
-  lazy val meanAveragePrecision: Double = {
-    predictionAndLabels.map { case (pred, lab) =>
-      val labSet = lab.map(_._1).toSet
+  def recallAt(k: Int): Double = {
+    require(k > 0, "ranking position k should be positive")
+    predictionAndLabels.map { case (pred, label) =>
+      val labelMap = label.toMap
 
-      if (labSet.nonEmpty) {
+      if (labelMap.nonEmpty) {
+        val size = labelMap.size
+
+        val n = math.min(pred.length, k)
+        var i = 0
+        var cnt = 0
+        while (i < n) {
+          if (labelMap.contains(pred(i))) {
+            cnt += 1
+          }
+          i += 1
+        }
+        cnt.toDouble / size
+      } else {
+        0.0
+      }
+    }.mean()
+  }
+
+  def f1At(k: Int): Double = {
+    require(k > 0, "ranking position k should be positive")
+    val precision = precisionAt(k)
+    val recall = recallAt(k)
+    2 * precision * recall / (precision + recall)
+  }
+
+  def mapAt(k: Int): Double = {
+    predictionAndLabels.map { case (pred, label) =>
+      val labelMap = label.toMap
+
+      if (labelMap.nonEmpty) {
         var i = 0
         var cnt = 0
         var precSum = 0.0
-        val n = pred.length
+        val n = math.min(math.max(pred.length, labelMap.size), k)
         while (i < n) {
-          if (labSet.contains(pred(i)._1)) {
+          if (labelMap.contains(pred(i))) {
             cnt += 1
             precSum += cnt.toDouble / (i + 1)
           }
           i += 1
         }
-        precSum / labSet.size
+        precSum / labelMap.size
       } else {
-        log.warn("Empty ground truth set, check input data")
         0.0
       }
     }.mean()
@@ -112,8 +140,7 @@ class DataFrameRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, rele
     predictionAndLabels.map { case (pred, label) =>
       val labelMap = label.toMap
       if (labelMap.nonEmpty) {
-        val labSetSize = labelMap.size
-        val n = math.min(math.max(pred.length, labSetSize), k)
+        val n = math.min(math.max(pred.length, labelMap.size), k)
         var idealDcg = 0.0
         var dcg = 0.0
         var i = 0
@@ -123,7 +150,7 @@ class DataFrameRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, rele
           var ideal = 0.0
 
           if (i < pred.length) {
-            gain = labelMap.get(pred(i)._1).map(rel => (math.pow(2, rel) - 1) / math.log(i + 2)).getOrElse(0.0)
+            gain = labelMap.get(pred(i)).map(rel => (math.pow(2, rel) - 1) / math.log(i + 2)).getOrElse(0.0)
             dcg += gain
           }
 
@@ -136,7 +163,6 @@ class DataFrameRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, rele
         }
         dcg / idealDcg
       } else {
-        log.warn("Empty ground truth set, check input data")
         0.0
       }
     }.mean()
