@@ -8,6 +8,7 @@ import org.scalatest._
 
 object TestEquality {
   val ats = Array(5, 10, 30, 50, 100)
+  val eps = 1e-9
 
   sealed trait Metric
   case object NDCG extends Metric
@@ -49,10 +50,10 @@ object TestEquality {
       case Rating(user, item, score) => groundTruthModel.addPreference(user, item, score)
     }
 
-    val ndcg = new rival.NDCG(predictionModel, groundTruthModel, 0, ats, rival.NDCG.TYPE.EXP)
-    val map = new rival.MAP(predictionModel, groundTruthModel, 0, ats)
-    val precision = new rival.Precision(predictionModel, groundTruthModel, 0, ats)
-    val recall = new rival.Recall(predictionModel, groundTruthModel, 0, ats)
+    val ndcg = new rival.NDCG(predictionModel, groundTruthModel, eps, ats, rival.NDCG.TYPE.EXP)
+    val map = new rival.MAP(predictionModel, groundTruthModel, eps, ats)
+    val precision = new rival.Precision(predictionModel, groundTruthModel, eps, ats)
+    val recall = new rival.Recall(predictionModel, groundTruthModel, eps, ats)
 
     Seq(ndcg, map, precision, recall).foreach(_.compute())
 
@@ -68,7 +69,7 @@ object TestEquality {
 
 class TestEquality extends FlatSpec with Matchers {
   import TestEquality._
-  implicit val doubleEquality = TolerantNumerics.tolerantDoubleEquality(1e-9)
+  implicit val doubleEquality = TolerantNumerics.tolerantDoubleEquality(eps)
 
   ourResults
   rivalResults

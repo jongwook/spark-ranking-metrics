@@ -66,11 +66,11 @@ object MovieLensEvaluateRival extends App {{
     }
   }
 
-  val ndcg = new NDCG(predictions, groundtruth, 0, ats, TYPE.EXP)
-  val map = new MAP(predictions, groundtruth, 0, ats)
-  val precision = new Precision(predictions, groundtruth, 0, ats)
-  val recall = new Recall(predictions, groundtruth, 0, ats)
-  val f1 = new F1(precision, recall, predictions, groundtruth, 0, ats)
+  val ndcg = new NDCG(predictions, groundtruth, 1e-9, ats, TYPE.EXP)
+  val map = new MAP(predictions, groundtruth, 1e-9, ats)
+  val precision = new Precision(predictions, groundtruth, 1e-9, ats)
+  val recall = new Recall(predictions, groundtruth, 1e-9, ats)
+  val f1 = new F1(precision, recall, predictions, groundtruth, 1e-9, ats)
 
   val metrics = Seq(ndcg, map, precision, recall, f1)
 
