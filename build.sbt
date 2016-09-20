@@ -11,9 +11,3 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-hive" % "2.0.0" % "test",
   "org.scalatest" %% "scalatest" % "3.0.0"
 )
-
-mainClass in assembly := Some("com.github.jongwook.MovieLensEvaluateRival")
-
-assemblyJarName in assembly := "MovieLensEvaluateRival.jar"
-
-test in assembly := {}

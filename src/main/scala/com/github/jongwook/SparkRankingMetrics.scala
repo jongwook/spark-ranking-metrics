@@ -8,8 +8,9 @@ import org.apache.spark.sql._
 import org.slf4j.LoggerFactory
 
 
-trait DataFrameRankingParams extends Params {
-  override val uid: String = Identifiable.randomUID("datasetRankingParams")
+class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanceThreshold: Double = 0) extends Params {
+
+  override val uid: String = Identifiable.randomUID(getClass.getSimpleName)
 
   val userCol = new Param[String](this, "userCol", "column name for user ids. Ids must be within the integer value range.")
   val itemCol = new Param[String](this, "itemCol", "column name for item ids. Ids must be within the integer value range.")
@@ -25,10 +26,7 @@ trait DataFrameRankingParams extends Params {
   def setItemCol(value: String): this.type = set(itemCol, value)
   def setRatingCol(value: String): this.type = set(ratingCol, value)
   def setPredictionCol(value: String): this.type = set(predictionCol, value)
-}
 
-
-class DataFrameRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanceThreshold: Double = 0) extends DataFrameRankingParams with Serializable {
 
   lazy val log = LoggerFactory.getLogger(getClass)
   lazy val sqlContext = groundTruth.sqlContext
@@ -169,24 +167,22 @@ class DataFrameRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, rele
   }
 
   override def copy(extra: ParamMap): Params = {
-    val copied = new DataFrameRankingMetrics(predicted, groundTruth)
+    val copied = new SparkRankingMetrics(predicted, groundTruth)
     copyValues(copied, extra)
     copied
   }
-
 }
 
-
-object DataFrameRankingMetrics {
+object SparkRankingMetrics {
   def apply[P: Encoder, G: Encoder](predicted: Dataset[P], groundTruth: Dataset[G], relevanceThreshold: Double = 0) = {
-    new DataFrameRankingMetrics(predicted.toDF, groundTruth.toDF, relevanceThreshold)
+    new SparkRankingMetrics(predicted.toDF, groundTruth.toDF, relevanceThreshold)
   }
 
   def apply(predicted: DataFrame, groundTruth: DataFrame) = {
-    new DataFrameRankingMetrics(predicted, groundTruth)
+    new SparkRankingMetrics(predicted, groundTruth)
   }
 
   def apply(predicted: DataFrame, groundTruth: DataFrame, relevanceThreshold: Double) = {
-    new DataFrameRankingMetrics(predicted, groundTruth, relevanceThreshold)
+    new SparkRankingMetrics(predicted, groundTruth, relevanceThreshold)
   }
 }

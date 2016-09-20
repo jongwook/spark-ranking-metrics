@@ -24,7 +24,7 @@ object TestEquality {
     val predictionDF = spark.createDataFrame(prediction)
     val groundTruthDF = spark.createDataFrame(groundTruth)
 
-    val metrics = DataFrameRankingMetrics(predictionDF, groundTruthDF)
+    val metrics = SparkRankingMetrics(predictionDF, groundTruthDF)
     metrics.setItemCol("product")
     metrics.setPredictionCol("rating")
 
