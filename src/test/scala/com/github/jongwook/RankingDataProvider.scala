@@ -16,7 +16,7 @@ object RankingDataProvider {
     val spark = SparkSession.builder().master(new SparkConf().get("spark.master", "local[8]")).getOrCreate()
     val sc = spark.sparkContext
 
-    val Array(trainRatings, testRatings) = sc.parallelize(ratings).cache().randomSplit(Array(0.99, 0.01), 0)
+    val Array(trainRatings, testRatings) = sc.parallelize(ratings).cache().randomSplit(Array(0.9, 0.1), 0)
     val model = ALS.trainImplicit(trainRatings, 10, 20, 2, -1, 10, 0)
 
     val testUsers = testRatings.map(_.user).collect().toSet

@@ -5,7 +5,8 @@ Ranking is an important component for building recommender systems, and there ar
 
 Users are usually provided with a certain number of recommended items, so it is usual to measure the performance of only the top-*k* recommended items, and this is why the metrics are often suffixed by "@*k*".
 
-Currently, Spark's implementations for ranking metrics are [quite limited](http://spark.apache.org/docs/2.0.0/api/scala/index.html#org.apache.spark.mllib.evaluation.RankingMetrics), and its NDCG implementation seems [incorrect](https://gist.github.com/jongwook/5d4e78290eaef22cb69abbf68b52e597). Meanwhile, [RiVal](https://github.com/recommenders/rival) aims to be a toolkit for reproducible recommender system evaluation and provides a robust implementation for a few ranking metrics, but it is written as a single-threaded application and therefore is not applicable to the scale which Spark users typically encounter.
+Currently, Spark's implementations for ranking metrics are [quite limited](http://spark.apache.org/docs/2.0.0/api/scala/index.html#org.apache.spark.mllib.evaluation.RankingMetrics), and its NDCG implementation assumes that the relevance is always binary, 
+producing [different numbers](https://gist.github.com/jongwook/5d4e78290eaef22cb69abbf68b52e597). Meanwhile, [RiVal](https://github.com/recommenders/rival) aims to be a toolkit for reproducible recommender system evaluation and provides a robust implementation for a few ranking metrics, but it is written as a single-threaded application and therefore is not applicable to the scale which Spark users typically encounter.
 
 To complement this, [`SparkRankingMetrics`](src/main/scala/com/github/jongwook/SparkRankingMetrics.scala) contains scalable implementations for NDCG, MAP, Precision, and Recall, using Spark's DataFrame/Dataset idioms.
 
