@@ -7,7 +7,22 @@ import org.apache.spark.sql.types.{DoubleType, IntegerType}
 import org.apache.spark.sql._
 import org.slf4j.LoggerFactory
 
-
+/** Contains methods to calculate various ranking metrics.
+  * columns "user", "item", "rating", and "prediction" should be present in the input DataFrames,
+  * which can be overridden using the set{column name}Col methods.
+  *
+  * @param predicted
+  * a DataFrame that contains the data to be evaluated,
+  * where the rankings are implied from the numbers in the "prediction" column
+  * should also contain the columns "user" and "item".
+  *
+  * @param groundTruth
+  * a DataFrame that contains the ground truth data
+  * should contain the columns "user", "item", and "prediction".
+  *
+  * @param relevanceThreshold
+  * entries in the ground truth dataset with the rating lower than this value will be ignored
+  */
 class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanceThreshold: Double = 0) extends Params {
 
   override val uid: String = Identifiable.randomUID(getClass.getSimpleName)
@@ -57,6 +72,7 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
     }.cache()
   }
 
+  /** Computes Precision@k */
   def precisionAt(k: Int): Double = {
     require(k > 0, "ranking position k should be positive")
     predictionAndLabels.map { case (pred, label) =>
@@ -72,13 +88,18 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
           }
           i += 1
         }
-        cnt.toDouble / k
+        if (k == Integer.MAX_VALUE) {
+          cnt.toDouble / pred.length
+        } else {
+          cnt.toDouble / k
+        }
       } else {
         0.0
       }
     }.mean()
   }
 
+  /** Computes Recall@k */
   def recallAt(k: Int): Double = {
     require(k > 0, "ranking position k should be positive")
     predictionAndLabels.map { case (pred, label) =>
@@ -103,6 +124,7 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
     }.mean()
   }
 
+  /** Computes the F1-score at k */
   def f1At(k: Int): Double = {
     require(k > 0, "ranking position k should be positive")
     val precision = precisionAt(k)
@@ -110,6 +132,7 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
     2 * precision * recall / (precision + recall)
   }
 
+  /** Computes the mean average precision at k */
   def mapAt(k: Int): Double = {
     predictionAndLabels.map { case (pred, label) =>
       val labelMap = label.toMap
@@ -133,6 +156,9 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
     }.mean()
   }
 
+  def map = mapAt(Integer.MAX_VALUE)
+
+  /** Computes the Normalized Discounted Cumulative Gain at k */
   def ndcgAt(k: Int): Double = {
     require(k > 0, "ranking position k should be positive")
     predictionAndLabels.map { case (pred, label) =>
@@ -165,6 +191,79 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
       }
     }.mean()
   }
+
+  /** Computes the Mean Reciprocal Rank at k */
+  def mrrAt(k: Int): Double = {
+    require(k > 0, "ranking position k should be positive")
+    predictionAndLabels.map { case (pred, label) =>
+      val labelRank = label.map { case (item, rating) => item }.zipWithIndex.toMap
+
+      if (labelRank.nonEmpty) {
+        val n = math.min(pred.length, k)
+        var i = 0
+        var cumul = 0.0
+        while (i < n) {
+          labelRank.get(pred(i)).foreach {
+            rank => cumul += 1.0 / (rank + 1.0)
+          }
+          i += 1
+        }
+        if (k == Integer.MAX_VALUE) {
+          cumul / pred.length
+        } else {
+          cumul / k
+        }
+      } else {
+        0.0
+      }
+    }.mean()
+  }
+
+  def mrr = mrrAt(Integer.MAX_VALUE)
+
+  /* WIP
+  /** Computes the Area Under Curve of the Receiver Operating Characteristic curve, at K*/
+  def aucAt(k: Int): Double = {
+    require(k > 0, "ranking position k should be positive")
+    predictionAndLabels.map { case (pred, label) =>
+      val labelRank = label.map { case (item, rating) => item }.zipWithIndex.toMap
+
+      if (labelRank.nonEmpty) {
+        val predSet = pred.toSet
+        val labelSize = labelRank.size
+
+        val n = math.min(pred.length, k)
+        var i = 0
+        var cumul = 0.0
+        while (i < n) {
+          labelRank.get(pred(i)).foreach { pivot =>
+            val upper = labelRank.count {
+              case (item, rank) => !predSet.contains(item) && rank < pivot
+            }.toDouble
+            val lower = labelRank.count {
+              case (item, rank) => !predSet.contains(item) && rank > pivot
+            }.toDouble
+            if (lower == 0 && upper == 0) {
+              cumul += 0.5
+            } else if (lower > 0) {
+              cumul += lower / (upper + lower)
+            }
+          }
+          i += 1
+        }
+        if (k == Integer.MAX_VALUE) {
+          cumul / pred.length
+        } else {
+          cumul / k
+        }
+      } else {
+        0.0
+      }
+    }.mean()
+  }
+
+  def auc = aucAt(Integer.MAX_VALUE)
+  */
 
   override def copy(extra: ParamMap): Params = {
     val copied = new SparkRankingMetrics(predicted, groundTruth)
