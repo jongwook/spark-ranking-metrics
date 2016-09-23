@@ -15,11 +15,9 @@ import org.slf4j.LoggerFactory
   * a DataFrame that contains the data to be evaluated,
   * where the rankings are implied from the numbers in the "prediction" column
   * should also contain the columns "user" and "item".
-  *
   * @param groundTruth
   * a DataFrame that contains the ground truth data
   * should contain the columns "user", "item", and "prediction".
-  *
   * @param relevanceThreshold
   * entries in the ground truth dataset with the rating lower than this value will be ignored
   */
@@ -73,42 +71,59 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
   }
 
   /** Computes Precision@k */
-  def precisionAt(k: Int): Double = {
-    require(k > 0, "ranking position k should be positive")
-    predictionAndLabels.map { case (pred, label) =>
+  def precisionAt(ats: Seq[Int]): Seq[Double] = {
+    require(ats.forall(_ > 0), "ranking position k should be positive")
+    val setK = ats.toSet
+    val maxK = ats.max
+    val lookup = ats.zipWithIndex.toMap
+
+    val (sums, size) = predictionAndLabels.map { case (pred, label) =>
       val labelMap = label.toMap
+      val result = new Array[Double](setK.size)
 
       if (labelMap.nonEmpty) {
-        val n = math.min(pred.length, k)
+        val n = math.min(pred.length, maxK)
         var i = 0
         var cnt = 0
+
         while (i < n) {
           if (labelMap.contains(pred(i))) {
             cnt += 1
           }
           i += 1
+
+          if (setK.contains(i)) {
+            result(lookup(i)) = cnt.toDouble / i
+          }
         }
-        if (k == Integer.MAX_VALUE) {
-          cnt.toDouble / pred.length
-        } else {
-          cnt.toDouble / k
+        if (setK.contains(Integer.MAX_VALUE)) {
+          result(lookup(Integer.MAX_VALUE)) = cnt.toDouble / pred.length
         }
-      } else {
-        0.0
       }
-    }.mean()
+
+      (result, 1)
+    }.reduce(SparkRankingMetrics.addArrayAndSize)
+
+    sums.map(_ / size)
   }
 
+  def precisionAt(k: Int): Double = precisionAt(Seq(k)).head
+
   /** Computes Recall@k */
-  def recallAt(k: Int): Double = {
-    require(k > 0, "ranking position k should be positive")
-    predictionAndLabels.map { case (pred, label) =>
+  def recallAt(ats: Seq[Int]): Seq[Double] = {
+    require(ats.forall(_ > 0), "ranking position k should be positive")
+    val setK = ats.toSet
+    val maxK = ats.max
+    val lookup = ats.zipWithIndex.toMap
+
+    val (sums, size) = predictionAndLabels.map { case (pred, label) =>
       val labelMap = label.toMap
+      val result = new Array[Double](setK.size)
 
       if (labelMap.nonEmpty) {
         val size = labelMap.size
 
-        val n = math.min(pred.length, k)
+        val n = math.min(pred.length, maxK)
         var i = 0
         var cnt = 0
         while (i < n) {
@@ -116,55 +131,90 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             cnt += 1
           }
           i += 1
+
+          if (setK.contains(i)) {
+            result(lookup(i)) = cnt.toDouble / size
+          }
         }
-        cnt.toDouble / size
-      } else {
-        0.0
+        if (setK.contains(Integer.MAX_VALUE)) {
+          result(lookup(Integer.MAX_VALUE)) = cnt.toDouble / size
+        }
       }
-    }.mean()
+
+      (result, 1)
+    }.reduce(SparkRankingMetrics.addArrayAndSize)
+
+    sums.map(_ / size)
   }
+
+  def recallAt(k: Int): Double = recallAt(Seq(k)).head
 
   /** Computes the F1-score at k */
-  def f1At(k: Int): Double = {
-    require(k > 0, "ranking position k should be positive")
-    val precision = precisionAt(k)
-    val recall = recallAt(k)
-    2 * precision * recall / (precision + recall)
+  def f1At(ats: Seq[Int]): Seq[Double] = {
+    val precisions = precisionAt(ats)
+    val recalls = recallAt(ats)
+    (precisions zip recalls).map {
+      case (precision, recall) => 2 * precision * recall / (precision + recall)
+    }
   }
 
+  def f1At(k: Int): Double = f1At(Seq(k)).head
+
   /** Computes the mean average precision at k */
-  def mapAt(k: Int): Double = {
-    predictionAndLabels.map { case (pred, label) =>
+  def mapAt(ats: Seq[Int]): Seq[Double] = {
+    require(ats.forall(_ > 0), "ranking position k should be positive")
+    val setK = ats.toSet
+    val maxK = ats.max
+    val lookup = ats.zipWithIndex.toMap
+
+    val (sums, size) = predictionAndLabels.map { case (pred, label) =>
       val labelMap = label.toMap
+      val labelSize = labelMap.size
+      val result = new Array[Double](setK.size)
 
       if (labelMap.nonEmpty) {
         var i = 0
         var cnt = 0
         var precSum = 0.0
-        val n = math.min(math.max(pred.length, labelMap.size), k)
+        val n = math.min(math.max(pred.length, labelSize), maxK)
         while (i < n) {
           if (labelMap.contains(pred(i))) {
             cnt += 1
             precSum += cnt.toDouble / (i + 1)
           }
           i += 1
+          if (setK.contains(i)) {
+            result(lookup(i)) = precSum / labelSize
+          }
         }
-        precSum / labelMap.size
-      } else {
-        0.0
+        if (setK.contains(Integer.MAX_VALUE)) {
+          result(lookup(Integer.MAX_VALUE)) = precSum / labelSize
+        }
       }
-    }.mean()
+
+      (result, 1)
+    }.reduce(SparkRankingMetrics.addArrayAndSize)
+
+    sums.map(_ / size)
   }
+
+  def mapAt(k: Int): Double = mapAt(Seq(k)).head
 
   def map = mapAt(Integer.MAX_VALUE)
 
   /** Computes the Normalized Discounted Cumulative Gain at k */
-  def ndcgAt(k: Int): Double = {
-    require(k > 0, "ranking position k should be positive")
-    predictionAndLabels.map { case (pred, label) =>
+  def ndcgAt(ats: Seq[Int]): Seq[Double] = {
+    require(ats.forall(_ > 0), "ranking position k should be positive")
+    val setK = ats.toSet
+    val maxK = ats.max
+    val lookup = ats.zipWithIndex.toMap
+
+    val (sums, size) = predictionAndLabels.map { case (pred, label) =>
       val labelMap = label.toMap
+      val result = new Array[Double](setK.size)
+
       if (labelMap.nonEmpty) {
-        val n = math.min(math.max(pred.length, labelMap.size), k)
+        val n = math.min(math.max(pred.length, labelMap.size), maxK)
         var idealDcg = 0.0
         var dcg = 0.0
         var i = 0
@@ -184,22 +234,37 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
           }
 
           i += 1
+
+          if (setK.contains(i)) {
+            result(lookup(i)) = dcg / idealDcg
+          }
         }
-        dcg / idealDcg
-      } else {
-        0.0
+        if (setK.contains(Integer.MAX_VALUE)) {
+          result(lookup(Integer.MAX_VALUE)) = dcg / idealDcg
+        }
       }
-    }.mean()
+
+      (result, 1)
+    }.reduce(SparkRankingMetrics.addArrayAndSize)
+
+    sums.map(_ / size)
   }
 
+  def ndcgAt(k: Int): Double = ndcgAt(Seq(k)).head
+
   /** Computes the Mean Reciprocal Rank at k */
-  def mrrAt(k: Int): Double = {
-    require(k > 0, "ranking position k should be positive")
-    predictionAndLabels.map { case (pred, label) =>
+  def mrrAt(ats: Seq[Int]): Seq[Double] = {
+    require(ats.forall(_ > 0), "ranking position k should be positive")
+    val setK = ats.toSet
+    val maxK = ats.max
+    val lookup = ats.zipWithIndex.toMap
+
+    val (sums, size) = predictionAndLabels.map { case (pred, label) =>
       val labelRank = label.map { case (item, rating) => item }.zipWithIndex.toMap
+      val result = new Array[Double](setK.size)
 
       if (labelRank.nonEmpty) {
-        val n = math.min(pred.length, k)
+        val n = math.min(pred.length, maxK)
         var i = 0
         var cumul = 0.0
         while (i < n) {
@@ -207,17 +272,23 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             rank => cumul += 1.0 / (rank + 1.0)
           }
           i += 1
+
+          if (setK.contains(i)) {
+            result(lookup(i)) = cumul / i
+          }
         }
-        if (k == Integer.MAX_VALUE) {
-          cumul / pred.length
-        } else {
-          cumul / k
+        if (setK.contains(Integer.MAX_VALUE)) {
+          result(lookup(Integer.MAX_VALUE)) = cumul / pred.length
         }
-      } else {
-        0.0
       }
-    }.mean()
+
+      (result, 1)
+    }.reduce(SparkRankingMetrics.addArrayAndSize)
+
+    sums.map(_ / size)
   }
+
+  def mrrAt(k: Int): Double = mrrAt(Seq(k)).head
 
   def mrr = mrrAt(Integer.MAX_VALUE)
 
@@ -239,5 +310,15 @@ object SparkRankingMetrics {
 
   def apply(predicted: DataFrame, groundTruth: DataFrame, relevanceThreshold: Double) = {
     new SparkRankingMetrics(predicted, groundTruth, relevanceThreshold)
+  }
+
+  private [SparkRankingMetrics] def addArrayAndSize(record1: (Array[Double], Int), record2: (Array[Double], Int)): (Array[Double], Int) = {
+    val (array1, size1) = record1
+    val (array2, size2) = record2
+
+    for (i <- array2.indices) {
+      array1(i) += array2(i)
+    }
+    (array1, size1 + size2)
   }
 }

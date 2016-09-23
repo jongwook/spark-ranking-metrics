@@ -30,9 +30,9 @@ object TestEquality {
 
     Map(
       NDCG -> ats.map(metrics.ndcgAt),
-      MAP -> ats.map(metrics.mapAt),
-      Precision -> ats.map(metrics.precisionAt),
-      Recall -> ats.map(metrics.recallAt)
+      MAP -> metrics.mapAt(ats),
+      Precision -> metrics.precisionAt(ats),
+      Recall -> metrics.recallAt(ats)
     )
   }
 
