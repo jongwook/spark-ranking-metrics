@@ -221,50 +221,6 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
 
   def mrr = mrrAt(Integer.MAX_VALUE)
 
-  /* WIP
-  /** Computes the Area Under Curve of the Receiver Operating Characteristic curve, at K*/
-  def aucAt(k: Int): Double = {
-    require(k > 0, "ranking position k should be positive")
-    predictionAndLabels.map { case (pred, label) =>
-      val labelRank = label.map { case (item, rating) => item }.zipWithIndex.toMap
-
-      if (labelRank.nonEmpty) {
-        val predSet = pred.toSet
-        val labelSize = labelRank.size
-
-        val n = math.min(pred.length, k)
-        var i = 0
-        var cumul = 0.0
-        while (i < n) {
-          labelRank.get(pred(i)).foreach { pivot =>
-            val upper = labelRank.count {
-              case (item, rank) => !predSet.contains(item) && rank < pivot
-            }.toDouble
-            val lower = labelRank.count {
-              case (item, rank) => !predSet.contains(item) && rank > pivot
-            }.toDouble
-            if (lower == 0 && upper == 0) {
-              cumul += 0.5
-            } else if (lower > 0) {
-              cumul += lower / (upper + lower)
-            }
-          }
-          i += 1
-        }
-        if (k == Integer.MAX_VALUE) {
-          cumul / pred.length
-        } else {
-          cumul / k
-        }
-      } else {
-        0.0
-      }
-    }.mean()
-  }
-
-  def auc = aucAt(Integer.MAX_VALUE)
-  */
-
   override def copy(extra: ParamMap): Params = {
     val copied = new SparkRankingMetrics(predicted, groundTruth)
     copyValues(copied, extra)

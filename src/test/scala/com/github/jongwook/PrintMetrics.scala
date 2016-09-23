@@ -19,8 +19,7 @@ object PrintMetrics extends App {
     "F1" -> { m => k => m.f1At(k) },
     "NDCG" -> { m => k => m.ndcgAt(k) },
     "MAP" -> { m => k => m.mapAt(k) },
-    "MRR" -> { m => k => m.mrrAt(k) },
-    "AUC" -> { m => k => m.aucAt(k) }
+    "MRR" -> { m => k => m.mrrAt(k) }
   )
 
   for ((metric, calculator) <- toPrint) {
