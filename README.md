@@ -50,4 +50,4 @@ println(metrics.recallAt(20))
 Validation
 ----------
 
-This repository contains [a test case](src/test/scala/com/github/jongwook/TestEquality.scala) that checks the numbers produced by `SparkRankingMetrics` are identical to what RiVal's corresponding implementations produce, using the [MovieLens 100K dataset](http://grouplens.org/datasets/movielens/100k/)
+This repository contains [a test case](src/test/scala/com/github/jongwook/TestEquality.scala) that checks the numbers produced by `SparkRankingMetrics` are identical to what RiVal's corresponding implementations produce, using the [MovieLens 100K dataset](http://grouplens.org/datasets/movielens/100k/). The result is: [![Build Status](https://travis-ci.org/jongwook/spark-ranking-metrics.svg?branch=master)](https://travis-ci.org/jongwook/spark-ranking-metrics)
