@@ -15,6 +15,8 @@ libraryDependencies ++= Seq("provided", "test").map { config =>
   "net.recommenders.rival" % "rival-evaluate" % "0.2" % "test"
 )
 
+releasePublishArtifactsAction := PgpKeys.publishSigned.value
+
 credentials ++= {
   val xml = XML.loadFile(new File(System.getProperty("user.home")) / ".m2" / "settings.xml")
   for (server <- xml \\ "server" if (server \ "id").text == "ossrh") yield {
@@ -28,4 +30,28 @@ publishTo := {
   } else {
     Some("apache" at "https://oss.sonatype.org/service/local/staging/deploy/maven2")
   }
+}
+
+pomIncludeRepository := { _ => false }
+
+pomExtra := {
+  <url>http://github.com/jongwook/spark-ranking-metrics</url>
+  <licenses>
+    <license>
+      <name>Unlicense</name>
+      <url>http://unlicense.org/</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <scm>
+    <url>git@github.com:jongwook/spark-ranking-metrics.git</url>
+    <connection>scm:git:git@github.com:jongwook/spark-ranking-metrics.git</connection>
+  </scm>
+  <developers>
+    <developer>
+      <id>jongwook</id>
+      <name>Jong Wook Kim</name>
+      <url>http://jongwook.kim</url>
+    </developer>
+  </developers>
 }
