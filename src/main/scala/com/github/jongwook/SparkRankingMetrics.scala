@@ -81,7 +81,7 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
       val labelMap = label.toMap
       val result = new Array[Double](setK.size)
 
-      if (labelMap.nonEmpty) {
+      if (pred.nonEmpty && labelMap.nonEmpty) {
         val n = math.min(pred.length, maxK)
         var i = 0
         var cnt = 0
@@ -96,8 +96,12 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             result(lookup(i)) = cnt.toDouble / i
           }
         }
-        if (setK.contains(Integer.MAX_VALUE)) {
-          result(lookup(Integer.MAX_VALUE)) = cnt.toDouble / pred.length
+        for (k <- ats.filter(_ >= n)) {
+          if (k == Integer.MAX_VALUE) {
+            result(lookup(k)) = cnt.toDouble / pred.length
+          } else {
+            result(lookup(k)) = cnt.toDouble / k
+          }
         }
       }
 
@@ -136,8 +140,8 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             result(lookup(i)) = cnt.toDouble / size
           }
         }
-        if (setK.contains(Integer.MAX_VALUE)) {
-          result(lookup(Integer.MAX_VALUE)) = cnt.toDouble / size
+        for (k <- ats.filter(_ >= n)) {
+          result(lookup(k)) = cnt.toDouble / size
         }
       }
 
@@ -172,13 +176,13 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
       val labelSize = labelMap.size
       val result = new Array[Double](setK.size)
 
-      if (labelMap.nonEmpty) {
+      if (pred.nonEmpty && labelMap.nonEmpty) {
         var i = 0
         var cnt = 0
         var precSum = 0.0
         val n = math.min(math.max(pred.length, labelSize), maxK)
         while (i < n) {
-          if (labelMap.contains(pred(i))) {
+          if (i < pred.length && labelMap.contains(pred(i))) {
             cnt += 1
             precSum += cnt.toDouble / (i + 1)
           }
@@ -187,8 +191,8 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             result(lookup(i)) = precSum / labelSize
           }
         }
-        if (setK.contains(Integer.MAX_VALUE)) {
-          result(lookup(Integer.MAX_VALUE)) = precSum / labelSize
+        for (k <- ats.filter(_ >= n)) {
+          result(lookup(k)) = precSum / labelSize
         }
       }
 
@@ -263,7 +267,7 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
       val labelRank = label.map { case (item, rating) => item }.zipWithIndex.toMap
       val result = new Array[Double](setK.size)
 
-      if (labelRank.nonEmpty) {
+      if (pred.nonEmpty && labelRank.nonEmpty) {
         val n = math.min(pred.length, maxK)
         var i = 0
         var cumul = 0.0
@@ -277,8 +281,8 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             result(lookup(i)) = cumul / i
           }
         }
-        if (setK.contains(Integer.MAX_VALUE)) {
-          result(lookup(Integer.MAX_VALUE)) = cumul / pred.length
+        for (k <- ats.filter(_ >= n)) {
+          result(lookup(k)) = cumul / pred.length
         }
       }
 

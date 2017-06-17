@@ -18,10 +18,13 @@ libraryDependencies ++= Seq("provided", "test").map { config =>
 releasePublishArtifactsAction := PgpKeys.publishSigned.value
 
 credentials ++= {
-  val xml = XML.loadFile(new File(System.getProperty("user.home")) / ".m2" / "settings.xml")
-  for (server <- xml \\ "server" if (server \ "id").text == "ossrh") yield {
-    Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", (server \ "username").text, (server \ "password").text)
-  }
+  val settings = new File(System.getProperty("user.home")) / ".m2" / "settings.xml"
+  if (settings.exists()) {
+    val xml = XML.loadFile(new File(System.getProperty("user.home")) / ".m2" / "settings.xml")
+    for (server <- xml \\ "server" if (server \ "id").text == "ossrh") yield {
+      Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", (server \ "username").text, (server \ "password").text)
+    }
+  } else Nil
 }
 
 publishTo := {
