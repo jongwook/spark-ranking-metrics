@@ -3,22 +3,15 @@ package com.github.jongwook
 import org.apache.spark.SparkConf
 import org.apache.spark.mllib.recommendation.Rating
 import org.apache.spark.sql.SparkSession
-import org.scalactic.TolerantNumerics
-import org.scalatest._
+import org.scalactic.{Equality, TolerantNumerics}
+import org.scalatest.{FlatSpec, Matchers}
 
-object TestEquality {
-  val ats = Array(5, 10, 30, 50, 100)
-  val eps = 1e-9
+/** Tests the equality of metrics from our implementation and Rival's */
+class TestEqualityWithRival extends FlatSpec with Matchers {
+  import TestFixture._
+  implicit val doubleEquality: Equality[Double] = TolerantNumerics.tolerantDoubleEquality(eps)
 
-  sealed trait Metric
-  case object NDCG extends Metric
-  case object MAP extends Metric
-  case object Precision extends Metric
-  case object Recall extends Metric
-
-  lazy val (prediction, groundTruth) = RankingDataProvider(MovieLensLoader.load())
-
-  lazy val ourResults: Map[Metric, Seq[Double]] = {
+  val ourResults: Map[Metric, Seq[Double]] = {
     val spark = SparkSession.builder().master(new SparkConf().get("spark.master", "local[8]")).getOrCreate()
 
     val predictionDF = spark.createDataFrame(prediction)
@@ -29,14 +22,14 @@ object TestEquality {
     metrics.setPredictionCol("rating")
 
     Map(
-      NDCG -> ats.map(metrics.ndcgAt),
+      NDCG -> metrics.ndcgAt(ats),
       MAP -> metrics.mapAt(ats),
       Precision -> metrics.precisionAt(ats),
       Recall -> metrics.recallAt(ats)
     )
   }
 
-  lazy val rivalResults: Map[Metric, Seq[Double]] = {
+  val rivalResults: Map[Metric, Seq[Double]] = {
     import net.recommenders.rival.core.DataModel
     import net.recommenders.rival.evaluation.metric.{ranking => rival}
 
@@ -64,15 +57,6 @@ object TestEquality {
       Recall -> ats.map(recall.getValueAt)
     )
   }
-
-}
-
-class TestEquality extends FlatSpec with Matchers {
-  import TestEquality._
-  implicit val doubleEquality = TolerantNumerics.tolerantDoubleEquality(eps)
-
-  ourResults
-  rivalResults
 
   for (metric <- Seq(NDCG, MAP, Precision, Recall)) {
     s"Our $metric implementation" should "produce the same numbers as Rival" in {
