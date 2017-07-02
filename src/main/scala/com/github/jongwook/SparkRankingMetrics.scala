@@ -169,7 +169,7 @@ class SparkRankingMetrics(predicted: Dataset[_], groundTruth: Dataset[_],
         var i = 0
         var cnt = 0
         var precSum = 0.0
-        val n = math.min(math.max(pred.length, labelSize), maxK)
+        val n = math.min(math.min(pred.length, labelSize), maxK)
         while (i < n) {
           if (i < pred.length && labelMap.contains(pred(i))) {
             cnt += 1
