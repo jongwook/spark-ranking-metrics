@@ -176,12 +176,12 @@ class SparkRankingMetrics(predicted: Dataset[_], groundTruth: Dataset[_],
             precSum += cnt.toDouble / (i + 1)
           }
           i += 1
-          if (setK.contains(i) && cnt > 0) {
-            result(lookup(i)) = precSum / cnt
+          if (setK.contains(i)) {
+            result(lookup(i)) = precSum / math.min(pred.length, i)
           }
         }
         for (k <- ats.filter(_ > n) if cnt > 0) {
-          result(lookup(k)) = precSum / cnt
+          result(lookup(k)) = precSum / math.min(pred.length, k)
         }
       }
 
