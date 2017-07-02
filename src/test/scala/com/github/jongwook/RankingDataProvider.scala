@@ -7,7 +7,7 @@ import org.scalatest._
 
 object RankingDataProvider {
 
-  /** Divide given ratings into 99%/1% splits, and trains an ALS model using Spark
+  /** Divide given ratings into 90%/10% splits, and trains an ALS model using Spark
     *
     * @return predicted and the ground truth ratings for the test set
     **/
@@ -17,7 +17,7 @@ object RankingDataProvider {
     val sc = spark.sparkContext
 
     val Array(trainRatings, testRatings) = sc.parallelize(ratings).cache().randomSplit(Array(0.9, 0.1), 0)
-    val model = ALS.trainImplicit(trainRatings, 10, 5, 2, -1, 10, 0)
+    val model = ALS.trainImplicit(trainRatings, rank = 10, iterations = 2, lambda = 2, blocks = 100, alpha = 10)
 
     val testUsers = testRatings.map(_.user).collect().toSet
     val testUsersBroadcast = spark.sparkContext.broadcast(testUsers)

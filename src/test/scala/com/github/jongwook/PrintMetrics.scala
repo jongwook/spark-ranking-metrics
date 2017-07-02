@@ -8,9 +8,7 @@ object PrintMetrics extends App {
 
   val spark = SparkSession.builder().master(new SparkConf().get("spark.master", "local[8]")).getOrCreate()
 
-  val metrics = SparkRankingMetrics(spark.createDataFrame(prediction), spark.createDataFrame(labels))
-  metrics.setItemCol("product")
-  metrics.setPredictionCol("rating")
+  val metrics = new SparkRankingMetrics(spark.createDataFrame(prediction), spark.createDataFrame(labels), itemCol = "product", predictionCol = "rating")
 
   val ats = Seq(5, 10, 20, 100, Integer.MAX_VALUE)
   val toPrint = Map[String, SparkRankingMetrics => Seq[Int] => Seq[Double]](

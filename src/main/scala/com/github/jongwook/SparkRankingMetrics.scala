@@ -1,10 +1,8 @@
 package com.github.jongwook
 
-import org.apache.spark.ml.param.{Param, ParamMap, Params}
-import org.apache.spark.ml.util.Identifiable
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.types.{DoubleType, IntegerType}
 import org.apache.spark.sql._
+import org.apache.spark.sql.types.{DoubleType, IntegerType}
 import org.slf4j.LoggerFactory
 
 /** Contains methods to calculate various ranking metrics.
@@ -18,49 +16,40 @@ import org.slf4j.LoggerFactory
   * @param groundTruth
   * a DataFrame that contains the ground truth data
   * should contain the columns "user", "item", and "prediction".
+  * @param userCol       column name for user ids. Ids must be in a 32-bit integer type.
+  * @param itemCol       column name for item ids. Ids must be in a 32-bit integer type.
+  * @param predictionCol column name for predictions, which contains the predicted rating values or scores
+  * @param ratingCol     column name for ratings, which contains the ground truth rating values
   * @param relevanceThreshold
   * entries in the ground truth dataset with the rating lower than this value will be ignored
   */
-class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanceThreshold: Double = 0) extends Params {
+class SparkRankingMetrics(predicted: Dataset[_], groundTruth: Dataset[_],
+                          userCol: String = "user", itemCol: String = "item",
+                          predictionCol: String = "prediction", ratingCol: String = "rating",
+                          relevanceThreshold: Double = 0) {
 
-  override val uid: String = Identifiable.randomUID(getClass.getSimpleName)
+  val log = LoggerFactory.getLogger(getClass)
+  val sqlContext = groundTruth.sqlContext
 
-  val userCol = new Param[String](this, "userCol", "column name for user ids. Ids must be within the integer value range.")
-  val itemCol = new Param[String](this, "itemCol", "column name for item ids. Ids must be within the integer value range.")
-  val ratingCol = new Param[String](this, "ratingCol", "column name for ratings")
-  val predictionCol = new Param[String](this, "predictionCol", "prediction column name")
-
-  setDefault(userCol, "user")
-  setDefault(itemCol, "item")
-  setDefault(ratingCol, "rating")
-  setDefault(predictionCol, "prediction")
-
-  def setUserCol(value: String): this.type = set(userCol, value)
-  def setItemCol(value: String): this.type = set(itemCol, value)
-  def setRatingCol(value: String): this.type = set(ratingCol, value)
-  def setPredictionCol(value: String): this.type = set(predictionCol, value)
-
-
-  lazy val log = LoggerFactory.getLogger(getClass)
-  lazy val sqlContext = groundTruth.sqlContext
-
-  def predictionAndLabels: RDD[(Array[Int], Array[(Int, Double)])] = {
-    import sqlContext.implicits._
+  val predictionAndLabels: RDD[(Array[Int], Array[(Int, Double)])] = {
     import org.apache.spark.sql.functions._
+    import sqlContext.implicits._
 
     val p = predicted
     val g = groundTruth
 
-    val user = col($(userCol)).cast(IntegerType).as("user")
-    val item = col($(itemCol)).cast(IntegerType).as("item")
-    val prediction = col($(predictionCol)).cast(DoubleType).as("prediction")
-    val rating = col($(ratingCol)).cast(DoubleType).as("rating")
+    val user = col(userCol).cast(IntegerType).as("user")
+    val item = col(itemCol).cast(IntegerType).as("item")
+    val prediction = col(predictionCol).cast(DoubleType).as("prediction")
+    val rating = col(ratingCol).cast(DoubleType).as("rating")
 
     val left = p.select(user, item, prediction).map {
       case Row(user: Int, item: Int, prediction: Double) => (user, (item, prediction))
+      case Row(user: Int, item: Int, prediction: Float) => (user, (item, prediction.toDouble))
     }
     val right = g.select(user, item, rating).where(rating >= relevanceThreshold).map {
       case Row(user: Int, item: Int, rating: Double) => (user, (item, rating))
+      case Row(user: Int, item: Int, rating: Float) => (user, (item, rating.toDouble))
     }
     (left.rdd cogroup right.rdd).values.map {
       case (predictedItems, groundTruthItems) =>
@@ -96,7 +85,7 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             result(lookup(i)) = cnt.toDouble / i
           }
         }
-        for (k <- ats.filter(_ >= n)) {
+        for (k <- ats.filter(_ > n)) {
           if (k == Integer.MAX_VALUE) {
             result(lookup(k)) = cnt.toDouble / pred.length
           } else {
@@ -140,7 +129,7 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             result(lookup(i)) = cnt.toDouble / size
           }
         }
-        for (k <- ats.filter(_ >= n)) {
+        for (k <- ats.filter(_ > n)) {
           result(lookup(k)) = cnt.toDouble / size
         }
       }
@@ -187,12 +176,12 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             precSum += cnt.toDouble / (i + 1)
           }
           i += 1
-          if (setK.contains(i)) {
-            result(lookup(i)) = precSum / labelSize
+          if (setK.contains(i) && cnt > 0) {
+            result(lookup(i)) = precSum / cnt
           }
         }
-        for (k <- ats.filter(_ >= n)) {
-          result(lookup(k)) = precSum / labelSize
+        for (k <- ats.filter(_ > n) if cnt > 0) {
+          result(lookup(k)) = precSum / cnt
         }
       }
 
@@ -204,7 +193,7 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
 
   def mapAt(k: Int): Double = mapAt(Seq(k)).head
 
-  def map = mapAt(Integer.MAX_VALUE)
+  def map: Double = mapAt(Integer.MAX_VALUE)
 
   /** Computes the Normalized Discounted Cumulative Gain at k */
   def ndcgAt(ats: Seq[Int]): Seq[Double] = {
@@ -213,7 +202,8 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
     val maxK = ats.max
     val lookup = ats.zipWithIndex.toMap
 
-    val (sums, size) = predictionAndLabels.map { case (pred, label) =>
+    val (sums, size) = predictionAndLabels.map { case (pred, truth) =>
+      val label = truth.filter(_._2 > 0)
       val labelMap = label.toMap
       val result = new Array[Double](setK.size)
 
@@ -243,8 +233,8 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             result(lookup(i)) = dcg / idealDcg
           }
         }
-        if (setK.contains(Integer.MAX_VALUE)) {
-          result(lookup(Integer.MAX_VALUE)) = dcg / idealDcg
+        for (k <- ats.filter(_ > n)) {
+          result(lookup(k)) = dcg / idealDcg
         }
       }
 
@@ -281,7 +271,7 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
             result(lookup(i)) = cumul / i
           }
         }
-        for (k <- ats.filter(_ >= n)) {
+        for (k <- ats.filter(_ > n)) {
           result(lookup(k)) = cumul / pred.length
         }
       }
@@ -296,26 +286,9 @@ class SparkRankingMetrics(predicted: DataFrame, groundTruth: DataFrame, relevanc
 
   def mrr = mrrAt(Integer.MAX_VALUE)
 
-  override def copy(extra: ParamMap): Params = {
-    val copied = new SparkRankingMetrics(predicted, groundTruth)
-    copyValues(copied, extra)
-    copied
-  }
 }
 
 object SparkRankingMetrics {
-  def apply[P: Encoder, G: Encoder](predicted: Dataset[P], groundTruth: Dataset[G], relevanceThreshold: Double = 0) = {
-    new SparkRankingMetrics(predicted.toDF, groundTruth.toDF, relevanceThreshold)
-  }
-
-  def apply(predicted: DataFrame, groundTruth: DataFrame) = {
-    new SparkRankingMetrics(predicted, groundTruth)
-  }
-
-  def apply(predicted: DataFrame, groundTruth: DataFrame, relevanceThreshold: Double) = {
-    new SparkRankingMetrics(predicted, groundTruth, relevanceThreshold)
-  }
-
   private [SparkRankingMetrics] def addArrayAndSize(record1: (Array[Double], Int), record2: (Array[Double], Int)): (Array[Double], Int) = {
     val (array1, size1) = record1
     val (array2, size2) = record2
